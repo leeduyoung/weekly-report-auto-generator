@@ -26,7 +26,7 @@
 
 Notion MCP의 `notion_search_pages` 또는 `notion_query_database` 도구를 사용합니다.
 
-데이터베이스 ID: `2d3fa8e135ec80e9a749c4bdb20403d8`
+데이터베이스 ID: `2d3fa8e135ec81ea8d8ce2a8e076e4dc`
 
 필터 조건 (예시):
 ```json

@@ -1,6 +1,14 @@
 {
-  "isUsingBuiltInNodeForMcp": true,
   "mcpServers": {
+    "postgres": {
+      "command": "/bin/bash",
+      "args": [
+        "/Users/2511-n0046/.mcp-scripts/postgres-mcp.sh"
+      ],
+      "env": {
+        "DATABASE_URI": "postgresql://admin:admin@localhost:5432/bqube"
+      }
+    },
     "notion": {
       "command": "npx",
       "args": [
@@ -8,7 +16,7 @@
         "@notionhq/notion-mcp-server"
       ],
       "env": {
-        "NOTION_TOKEN": "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"
+        "NOTION_TOKEN": "ntn_YOUR_NOTION_TOKEN"
       }
     },
     "n8n": {
@@ -18,9 +26,18 @@
         "mcp-n8n"
       ],
       "env": {
-        "N8N_HOST_URL": "http://localhost:5678",
-        "N8N_API_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyNGQ5MTMyMC0wYTcyLTQ1OTgtOTIyNy02ZmNjZDZkZDY0YjAiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiYTYzYWE0NTAtMTVmMS00Y2NhLWE4YTMtNDA1ZjVlOWYxYTExIiwiaWF0IjoxNzcxNDYzMDk2fQ._A50dDj5SKL_gsMD0yxIyPHzIpkrkE6a8l5Ir0tsBrM"
-      }
+        "N8N_BASE_URL": "http://localhost:5678",
+        "N8N_API_KEY": "YOUR_N8N_API_KEY"
+      }    
+    },
+    "http": {
+      "command": "node",
+      "args": ["/Users/2511-n0046/.mcp-scripts/http-post-mcp.mjs"]
     }
+  },
+  "isUsingBuiltInNodeForMcp": true,
+  "preferences": {
+    "coworkScheduledTasksEnabled": false,
+    "sidebarMode": "chat"
   }
 }
