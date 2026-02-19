@@ -1,0 +1,26 @@
+{
+  "isUsingBuiltInNodeForMcp": true,
+  "mcpServers": {
+    "notion": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@notionhq/notion-mcp-server"
+      ],
+      "env": {
+        "NOTION_TOKEN": "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"
+      }
+    },
+    "n8n": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-n8n"
+      ],
+      "env": {
+        "N8N_HOST_URL": "http://localhost:5678",
+        "N8N_API_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyNGQ5MTMyMC0wYTcyLTQ1OTgtOTIyNy02ZmNjZDZkZDY0YjAiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiYTYzYWE0NTAtMTVmMS00Y2NhLWE4YTMtNDA1ZjVlOWYxYTExIiwiaWF0IjoxNzcxNDYzMDk2fQ._A50dDj5SKL_gsMD0yxIyPHzIpkrkE6a8l5Ir0tsBrM"
+      }
+    }
+  }
+}

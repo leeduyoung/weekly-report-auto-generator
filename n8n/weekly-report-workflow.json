@@ -1,0 +1,76 @@
+{
+  "name": "Weekly Report to Confluence",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "weekly-report",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "weekly-report"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================\n// 주간보고서 Confluence 업로드 - Process Report\n// ============================================\n// 1. 환경변수에서 Confluence 자격 증명 로드\n// 2. 계층 구조 자동 생성 (연도 → 월 → 주 **폴더**)\n// 3. 템플릿 형식으로 HTML 생성\n// 4. 보고서 **페이지** 생성 (최하위만 페이지)\n// ============================================\n\nconst input = $input.first().json;\n\n// --- 입력 파싱 ---\nconst spaceKey = input.body.spaceKey;\nconst parentPageId = input.body.parentPageId;\nconst weekStartDate = input.body.weekStartDate;\nconst weekEndDate = input.body.weekEndDate;\n\n// 새 필드 (하위 호환: thisWeekContent/nextWeekContent도 지원)\nconst authorName = input.body.authorName || $env.REPORT_AUTHOR_NAME || '';\nconst thisWeekPlan = input.body.thisWeekPlan || '';\nconst thisWeekDone = input.body.thisWeekDone || input.body.thisWeekContent || '';\nconst nextWeekPlan = input.body.nextWeekPlan || input.body.nextWeekContent || '';\nconst issues = input.body.issues || '';\nconst resolvedIssues = input.body.resolvedIssues || '';\nconst newIssues = input.body.newIssues || '';\nconst leavePlan = input.body.leavePlan || '';\nconst comments = input.body.comments || '';\n\n// --- 환경변수 ---\nconst CONFLUENCE_BASE_URL = $env.CONFLUENCE_BASE_URL;\nconst ATLASSIAN_EMAIL = $env.ATLASSIAN_EMAIL;\nconst ATLASSIAN_API_TOKEN = $env.ATLASSIAN_API_TOKEN;\nconst ROOT_PAGE_ID = $env.CONFLUENCE_ROOT_PAGE_ID;\nconst REPORT_PREFIX = $env.CONFLUENCE_REPORT_PREFIX || '주간보고';\n\nconst requiredEnvVars = {\n  CONFLUENCE_BASE_URL,\n  ATLASSIAN_EMAIL,\n  ATLASSIAN_API_TOKEN,\n};\n\nfor (const [name, value] of Object.entries(requiredEnvVars)) {\n  if (!value) {\n    throw new Error(`환경변수 ${name}이(가) 설정되지 않았습니다.`);\n  }\n}\n\n// --- 날짜 유틸 ---\nfunction formatShortEnd(startDate, endDate) {\n  const startYear = startDate.substring(0, 4);\n  const endYear = endDate.substring(0, 4);\n  if (startYear === endYear) {\n    return endDate.substring(5);\n  }\n  return endDate;\n}\n\nfunction formatSlashDate(dateStr) {\n  return dateStr.substring(5).replace('-', '/');\n}\n\nfunction formatDotDate(dateStr) {\n  return dateStr.replace(/-/g, '.');\n}\n\nfunction calcNextWeekRange(weekEnd) {\n  const d = new Date(weekEnd + 'T00:00:00');\n  const nextMon = new Date(d);\n  nextMon.setDate(d.getDate() + 3);\n  const nextFri = new Date(d);\n  nextFri.setDate(d.getDate() + 7);\n  const fmt = (dt) => {\n    const mm = String(dt.getMonth() + 1).padStart(2, '0');\n    const dd = String(dt.getDate()).padStart(2, '0');\n    return `${mm}/${dd}`;\n  };\n  return `${fmt(nextMon)}~${fmt(nextFri)}`;\n}\n\n// --- 페이지 제목 생성 ---\nconst shortEnd = formatShortEnd(weekStartDate, weekEndDate);\nconst title = input.body.title || `${authorName} ${weekStartDate} ~ ${shortEnd}`;\n\n// --- Confluence API 래퍼 ---\nconst helpers = this.helpers;\nconst authHeader = 'Basic ' + Buffer.from(`${ATLASSIAN_EMAIL}:${ATLASSIAN_API_TOKEN}`).toString('base64');\n\nasync function confluenceApi(method, path, body) {\n  const url = `${CONFLUENCE_BASE_URL}/rest/api${path}`;\n  const options = {\n    method,\n    url,\n    headers: {\n      'Authorization': authHeader,\n      'Content-Type': 'application/json',\n      'Accept': 'application/json',\n    },\n    returnFullResponse: true,\n    ignoreHttpStatusErrors: true,\n    json: true,\n  };\n  if (body) {\n    options.body = body;\n  }\n  const resp = await helpers.httpRequest(options);\n  if (resp.statusCode >= 400) {\n    throw new Error(`Confluence API ${method} ${path} failed (${resp.statusCode}): ${JSON.stringify(resp.body)}`);\n  }\n  return resp.body;\n}\n\n// --- 하위 폴더 검색 (child/folder 엔드포인트) ---\nasync function findChildFolder(parentId, targetTitle) {\n  let start = 0;\n  const limit = 50;\n  while (true) {\n    const data = await confluenceApi('GET', `/content/${parentId}/child/folder?expand=title&limit=${limit}&start=${start}`);\n    const results = data.results || [];\n    for (const folder of results) {\n      if (folder.title === targetTitle) {\n        return folder;\n      }\n    }\n    if (results.length < limit) break;\n    start += limit;\n  }\n  return null;\n}\n\n// --- 폴더 찾기 또는 생성 (type: folder) ---\nasync function findOrCreateFolder(parentId, folderTitle, spKey) {\n  const existing = await findChildFolder(parentId, folderTitle);\n  if (existing) {\n    return existing;\n  }\n  try {\n    const created = await confluenceApi('POST', '/content', {\n      type: 'folder',\n      title: folderTitle,\n      space: { key: spKey },\n      ancestors: [{ id: String(parentId) }],\n    });\n    return created;\n  } catch (err) {\n    if (err.message && err.message.includes('409')) {\n      const retry = await findChildFolder(parentId, folderTitle);\n      if (retry) return retry;\n    }\n    throw err;\n  }\n}\n\n// --- 하위 페이지 검색 (보고서 페이지 전용) ---\nasync function findChildPage(parentId, targetTitle, spKey) {\n  const params = `title=${encodeURIComponent(targetTitle)}&spaceKey=${encodeURIComponent(spKey)}&expand=ancestors,version&limit=25`;\n  const data = await confluenceApi('GET', `/content?${params}`);\n  for (const page of (data.results || [])) {\n    const ancestors = page.ancestors || [];\n    if (ancestors.some(a => String(a.id) === String(parentId))) {\n      return page;\n    }\n  }\n  return null;\n}\n\n// --- 계층 구조: root → 연도 폴더 → 월 폴더 → 주 폴더 ---\nasync function resolveParentPageId(spKey, weekStart, weekEnd) {\n  const rootId = ROOT_PAGE_ID;\n  if (!rootId) {\n    throw new Error('환경변수 CONFLUENCE_ROOT_PAGE_ID가 설정되지 않았습니다.');\n  }\n  const year = weekStart.substring(0, 4);\n  const month = weekStart.substring(0, 7);\n  const yearTitle = `${REPORT_PREFIX} ${year}`;\n  const monthTitle = `${REPORT_PREFIX} ${month}`;\n  const weekTitle = `${REPORT_PREFIX} ${weekStart} ~ ${weekEnd}`;\n  const yearFolder = await findOrCreateFolder(rootId, yearTitle, spKey);\n  const monthFolder = await findOrCreateFolder(yearFolder.id, monthTitle, spKey);\n  const weekFolder = await findOrCreateFolder(monthFolder.id, weekTitle, spKey);\n  return weekFolder.id;\n}\n\n// --- Markdown → Confluence HTML ---\nfunction markdownToConfluenceHtml(md) {\n  if (!md) return '<p></p>';\n  let html = md;\n  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');\n  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');\n  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');\n  html = html.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');\n  const lines = html.split('\\n');\n  const result = [];\n  let inList = false;\n  let listDepth = 0;\n  for (const line of lines) {\n    const listMatch = line.match(/^(\\s*)- (.+)$/);\n    if (listMatch) {\n      const indent = listMatch[1].length;\n      const content = listMatch[2];\n      const depth = Math.floor(indent / 2);\n      if (!inList) {\n        result.push('<ul>');\n        inList = true;\n        listDepth = 0;\n      }\n      while (listDepth < depth) {\n        result.push('<ul>');\n        listDepth++;\n      }\n      while (listDepth > depth) {\n        result.push('</ul>');\n        listDepth--;\n      }\n      result.push(`<li><p>${content}</p></li>`);\n    } else {\n      while (listDepth > 0) {\n        result.push('</ul>');\n        listDepth--;\n      }\n      if (inList) {\n        result.push('</ul>');\n        inList = false;\n      }\n      if (line.trim() === '') continue;\n      result.push(line);\n    }\n  }\n  while (listDepth > 0) {\n    result.push('</ul>');\n    listDepth--;\n  }\n  if (inList) {\n    result.push('</ul>');\n  }\n  return result.join('\\n');\n}\n\n// --- 템플릿 HTML 생성 ---\nfunction buildTemplateHtml() {\n  const thisWeekSlash = `${formatSlashDate(weekStartDate)}~${formatSlashDate(weekEndDate)}`;\n  const nextWeekSlash = calcNextWeekRange(weekEndDate);\n  const periodStart = formatDotDate(weekStartDate);\n  const periodEnd = formatDotDate(weekEndDate);\n\n  const thisWeekPlanHtml = markdownToConfluenceHtml(thisWeekPlan);\n  const thisWeekDoneHtml = markdownToConfluenceHtml(thisWeekDone);\n  const nextWeekPlanHtml = markdownToConfluenceHtml(nextWeekPlan);\n  const issuesHtml = markdownToConfluenceHtml(issues);\n  const resolvedIssuesHtml = markdownToConfluenceHtml(resolvedIssues);\n  const newIssuesHtml = markdownToConfluenceHtml(newIssues);\n\n  return `<h3>기간</h3>` +\n    `<p>${periodStart} ~ ${periodEnd}</p>` +\n    `<p>&nbsp;</p>` +\n    `<h3><strong>1. 주간 업무</strong></h3>` +\n    `<table data-table-width=\"1800\" data-layout=\"center\"><tbody>` +\n    `<tr>` +\n    `<th data-highlight-colour=\"#b3d4ff\"><p><strong>이번 주 계획(${thisWeekSlash})</strong></p></th>` +\n    `<th data-highlight-colour=\"#b3d4ff\"><p><strong>이번 주 한일</strong></p></th>` +\n    `<th data-highlight-colour=\"#b3d4ff\"><p><strong>차주 계획(${nextWeekSlash})</strong></p></th>` +\n    `</tr>` +\n    `<tr>` +\n    `<td>${thisWeekPlanHtml}</td>` +\n    `<td>${thisWeekDoneHtml}</td>` +\n    `<td>${nextWeekPlanHtml}</td>` +\n    `</tr>` +\n    `<tr><td><p /></td><td><p /></td><td><p /></td></tr>` +\n    `</tbody></table>` +\n    `<table data-table-width=\"1800\" data-layout=\"center\"><tbody>` +\n    `<tr>` +\n    `<th data-highlight-colour=\"#b3d4ff\"><p><strong>이슈 현황</strong></p></th>` +\n    `<th data-highlight-colour=\"#b3d4ff\"><p><strong>이번 주 해소된 이슈</strong></p></th>` +\n    `<th data-highlight-colour=\"#b3d4ff\"><p><strong>이번 주 추가된 이슈</strong></p></th>` +\n    `</tr>` +\n    `<tr>` +\n    `<td>${issuesHtml}</td>` +\n    `<td>${resolvedIssuesHtml}</td>` +\n    `<td>${newIssuesHtml}</td>` +\n    `</tr>` +\n    `</tbody></table>` +\n    `<ol start=\"3\"><li><p><strong>연차 사용 계획</strong></p></li></ol>` +\n    `<p>${leavePlan || ''}</p>` +\n    `<ol start=\"4\"><li><p><strong>하고 싶은 말</strong></p></li></ol>` +\n    `<p>${comments || ''}</p>`;\n}\n\n// --- 메인 로직 ---\n\n// 1. 대상 부모 폴더 결정\nlet targetParentId;\nif (parentPageId) {\n  targetParentId = parentPageId;\n} else if (weekStartDate && weekEndDate) {\n  targetParentId = await resolveParentPageId(spaceKey, weekStartDate, weekEndDate);\n} else {\n  if (!ROOT_PAGE_ID) {\n    throw new Error('parentPageId 또는 weekStartDate/weekEndDate 중 하나가 필요합니다.');\n  }\n  targetParentId = ROOT_PAGE_ID;\n}\n\n// 2. 템플릿 HTML 생성\nconst bodyHtml = buildTemplateHtml();\n\n// 3. Confluence 페이지 생성 (이미 존재하면 링크만 반환)\nconst existingPage = await findChildPage(targetParentId, title, spaceKey);\n\nif (existingPage) {\n  const existingUrl = (existingPage._links?.base || CONFLUENCE_BASE_URL) + (existingPage._links?.webui || '');\n  return [{\n    json: {\n      success: true,\n      pageId: existingPage.id,\n      pageUrl: existingUrl,\n      title: existingPage.title,\n      parentPageId: targetParentId,\n      alreadyExists: true,\n    }\n  }];\n}\n\nconst page = await confluenceApi('POST', '/content', {\n  type: 'page',\n  title: title,\n  space: { key: spaceKey },\n  ancestors: [{ id: String(targetParentId) }],\n  body: {\n    storage: {\n      value: bodyHtml,\n      representation: 'storage',\n    },\n  },\n});\n\nconst pageUrl = (page._links?.base || '') + (page._links?.webui || '');\n\nreturn [{\n  json: {\n    success: true,\n    pageId: page.id,\n    pageUrl: pageUrl,\n    title: page.title,\n    parentPageId: targetParentId,\n    alreadyExists: false,\n  }\n}];"
+      },
+      "id": "code-process-report",
+      "name": "Process Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [680, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Process Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Report": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "weekly-report"
+    }
+  ],
+  "triggerCount": 0,
+  "active": true
+}
