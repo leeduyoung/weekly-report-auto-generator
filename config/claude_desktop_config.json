@@ -1,14 +1,5 @@
 {
   "mcpServers": {
-    "postgres": {
-      "command": "/bin/bash",
-      "args": [
-        "/Users/2511-n0046/.mcp-scripts/postgres-mcp.sh"
-      ],
-      "env": {
-        "DATABASE_URI": "postgresql://admin:admin@localhost:5432/bqube"
-      }
-    },
     "notion": {
       "command": "npx",
       "args": [

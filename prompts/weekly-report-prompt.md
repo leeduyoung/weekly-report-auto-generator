@@ -136,7 +136,7 @@ Notion MCP의 `notion_search_pages` 또는 `notion_query_database` 도구를 사
 
 ```json
 {
-  "authorName": "이두영",
+  "authorName": "홍길동",
   "spaceKey": "G1",
   "weekStartDate": "YYYY-MM-DD (해당 주 월요일)",
   "weekEndDate": "YYYY-MM-DD (해당 주 금요일)",
@@ -153,7 +153,7 @@ Notion MCP의 `notion_search_pages` 또는 `notion_query_database` 도구를 사
 
 > **참고**:
 > - `authorName`을 생략하면 환경변수 `REPORT_AUTHOR_NAME`의 값이 사용됩니다.
-> - 페이지 제목은 `{authorName} {weekStartDate} ~ {weekEndDate(MM-DD)}` 형식으로 자동 생성됩니다 (예: "이두영 2026-02-09 ~ 02-13").
+> - 페이지 제목은 `{authorName} {weekStartDate} ~ {weekEndDate(MM-DD)}` 형식으로 자동 생성됩니다 (예: "홍길동 2026-02-09 ~ 02-13").
 > - `weekStartDate`와 `weekEndDate`를 전달하면 Confluence에 연도 → 월 → 주 폴더 계층이 자동 생성됩니다.
 
 ### 9. 완료 보고

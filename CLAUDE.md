@@ -124,7 +124,7 @@ n8n webhook (`POST /webhook/weekly-report`)이 받는 JSON:
 
 ```json
 {
-  "authorName": "이두영",
+  "authorName": "홍길동",
   "spaceKey": "G1",
   "weekStartDate": "2026-02-09",
   "weekEndDate": "2026-02-13",
@@ -139,7 +139,7 @@ n8n webhook (`POST /webhook/weekly-report`)이 받는 JSON:
 }
 ```
 
-**페이지 제목**: `{authorName} {weekStartDate} ~ {weekEndDate(MM-DD)}` 형식으로 자동 생성 (예: "이두영 2026-02-09 ~ 02-13"). `title` 필드를 직접 전달하면 그 값을 사용.
+**페이지 제목**: `{authorName} {weekStartDate} ~ {weekEndDate(MM-DD)}` 형식으로 자동 생성 (예: "홍길동 2026-02-09 ~ 02-13"). `title` 필드를 직접 전달하면 그 값을 사용.
 
 **페이지 본문**: Confluence 테이블 템플릿으로 생성 -- 주간 업무 테이블 (이번 주 계획 / 이번 주 한일 / 차주 계획), 이슈 테이블, 연차 계획, 하고 싶은 말.
 
